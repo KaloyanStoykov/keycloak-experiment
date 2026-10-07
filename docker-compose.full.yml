@@ -1,0 +1,123 @@
+# Everything in containers: Keycloak, Postgres, and both .NET apps.
+#
+# The default docker-compose.yml runs only Keycloak + Postgres, with the .NET
+# apps on your host. That is the better development setup, and it sidesteps the
+# issuer problem described below.
+#
+# This file exists to show the problem and its solution, because you WILL meet
+# it when you deploy.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# ONE-TIME HOST SETUP (required)
+#
+#   echo "127.0.0.1 keycloak" | sudo tee -a /etc/hosts
+#
+# WHY: every token carries an `iss` claim built from Keycloak's hostname, and
+# your API compares it by exact string match. Containers reach Keycloak at
+# `keycloak:8080`; your browser reaches it at `localhost:8080`. Those are
+# different strings, so one of them must lose.
+#
+# The fix is to make ONE name work from both sides. Containers already resolve
+# `keycloak` via the compose network; the /etc/hosts line makes your browser
+# resolve it too. Now `http://keycloak:8080` is correct everywhere, and the
+# issuer matches no matter who asks.
+#
+# See docs/06-containerizing-keycloak.md for the production alternatives.
+# ─────────────────────────────────────────────────────────────────────────────
+#
+#   docker compose -f docker-compose.full.yml up --build -d
+#   open http://keycloak:5002        <- note: NOT localhost:5002
+#
+# Tear down:
+#   docker compose -f docker-compose.full.yml down -v
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: kcfull-postgres
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak-db-password
+    volumes:
+      - postgres-data-full:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    container_name: kcfull-server
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak-db-password
+      KC_HTTP_ENABLED: "true"
+      # THE KEY LINE. This string becomes the `iss` claim in every token, and
+      # it must be reachable under this exact name from both the browser and
+      # the other containers - hence the /etc/hosts entry above.
+      KC_HOSTNAME: http://keycloak:8080
+      KC_HOSTNAME_STRICT: "false"
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./keycloak/realm-full.json:/opt/keycloak/data/import/realm-full.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "exec 3<>/dev/tcp/127.0.0.1/9000 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '\"status\": \"UP\"'",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  api:
+    build:
+      context: .
+      dockerfile: src/Api/Dockerfile
+    container_name: kcfull-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: "5003"
+      # Same string the browser would use. This is the whole point.
+      Keycloak__Authority: http://keycloak:8080/realms/dotnet-lab
+      Keycloak__Audience: dotnet-api
+    ports:
+      - "5003:5003"
+    depends_on:
+      keycloak:
+        condition: service_healthy
+
+  webapp:
+    build:
+      context: .
+      dockerfile: src/WebApp/Dockerfile
+    container_name: kcfull-webapp
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: "5002"
+      Keycloak__Authority: http://keycloak:8080/realms/dotnet-lab
+      Keycloak__ClientId: dotnet-webapp
+      Keycloak__ClientSecret: webapp-secret-do-not-use-in-prod
+      # Container-to-container, over the compose network.
+      ApiBaseUrl: http://api:5003
+    ports:
+      - "5002:5002"
+    depends_on:
+      keycloak:
+        condition: service_healthy
+
+volumes:
+  postgres-data-full:

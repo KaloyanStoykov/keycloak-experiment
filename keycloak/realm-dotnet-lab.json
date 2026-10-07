@@ -1,0 +1,173 @@
+{
+  "realm": "dotnet-lab",
+  "displayName": "dotnet-lab (OAuth2/OIDC learning realm)",
+  "enabled": true,
+  "sslRequired": "none",
+
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "offlineSessionIdleTimeout": 2592000,
+  "revokeRefreshToken": false,
+  "refreshTokenMaxReuse": 0,
+
+  "roles": {
+    "realm": [
+      {
+        "name": "lab-user",
+        "description": "Baseline role. Every demo user has it."
+      },
+      {
+        "name": "lab-admin",
+        "description": "Elevated role. Only alice has it. Used to show authorization (not just authentication)."
+      }
+    ],
+    "client": {
+      "dotnet-api": [
+        {
+          "name": "reports.read",
+          "description": "Client role scoped to the API. Shows the difference between realm roles and client roles."
+        }
+      ]
+    }
+  },
+
+  "clients": [
+    {
+      "clientId": "dotnet-webapp",
+      "name": "ASP.NET Core Web App (confidential, Authorization Code + PKCE)",
+      "description": "The browser-facing app. It performs the Authorization Code flow and holds a client secret on the server.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "webapp-secret-do-not-use-in-prod",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": true,
+      "redirectUris": [
+        "http://localhost:5002/signin-oidc"
+      ],
+      "webOrigins": [
+        "http://localhost:5002"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:5002/signout-callback-oidc##http://localhost:5002/"
+      },
+      "protocolMappers": [
+        {
+          "name": "dotnet-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "dotnet-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "dotnet-api",
+      "name": "ASP.NET Core API (resource server)",
+      "description": "Validates access tokens. It never runs a login flow itself, so all browser flows are disabled.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "api-secret-do-not-use-in-prod",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": true,
+      "redirectUris": [],
+      "webOrigins": []
+    },
+    {
+      "clientId": "playground-cli",
+      "name": "curl / CLI playground (public client, Direct Access Grants)",
+      "description": "Only exists so you can get raw tokens from the command line. Password grant is deprecated for real apps.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": true,
+      "redirectUris": [],
+      "webOrigins": [],
+      "protocolMappers": [
+        {
+          "name": "dotnet-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "dotnet-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+
+  "users": [
+    {
+      "username": "alice",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "alice@example.com",
+      "firstName": "Alice",
+      "lastName": "Admin",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "default-roles-dotnet-lab",
+        "lab-user",
+        "lab-admin"
+      ],
+      "clientRoles": {
+        "dotnet-api": [
+          "reports.read"
+        ]
+      }
+    },
+    {
+      "username": "bob",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "bob@example.com",
+      "firstName": "Bob",
+      "lastName": "Basic",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "default-roles-dotnet-lab",
+        "lab-user"
+      ]
+    }
+  ]
+}

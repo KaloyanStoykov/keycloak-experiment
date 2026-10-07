@@ -1,0 +1,12 @@
+# .NET build output
+bin/
+obj/
+*.user
+
+# Realm exports are generated; the hand-written realm-dotnet-lab.json is the
+# source of truth and IS committed.
+keycloak/exported/
+
+# Local overrides
+appsettings.Local.json
+.env

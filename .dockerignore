@@ -1,0 +1,8 @@
+**/bin
+**/obj
+**/.vs
+**/.vscode
+keycloak/exported
+docs
+scripts
+*.md
